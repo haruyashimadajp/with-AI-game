@@ -53,6 +53,8 @@
     background: var(--panel);
   }
   header.bar h1 { font-family: var(--serif); font-size: 20px; margin: 0; letter-spacing: .05em; }
+  header.bar h1 { white-space: nowrap; }
+  #room-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   header.bar .spacer { flex: 1; }
   .chip {
     font-size: 12px; padding: 2px 8px; border-radius: 999px;
@@ -163,7 +165,10 @@
     .story { border-right: none; }
     .side { max-height: 34vh; border-top: 1px solid var(--line); }
     #log { padding: 14px 16px; }
+    header.bar { gap: 8px; padding: 8px 16px; }
     header.bar h1 { font-size: 16px; }
+    header.bar button { padding: 4px 10px; font-size: 13px; }
+    #mode-chip { display: none; }
   }
 </style>
 </head>
