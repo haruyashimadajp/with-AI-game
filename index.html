@@ -544,14 +544,15 @@ function buildContext(s) {
   };
 }
 
-async function aiAdjudicate(s, text, onProgress) {
-  const content = `# 状況\n${JSON.stringify(buildContext(s))}\n\n<player_input>${text}</player_input>`;
+let grammarBroken = false; // 文法制約つき生成が失敗する環境では、以後は制約なしで生成する
+
+async function generate(messages, useGrammar, onProgress) {
   const stream = await engine.chat.completions.create({
-    messages: [{ role: 'system', content: SYSTEM_ADJUDICATE }, { role: 'user', content }],
+    messages,
     temperature: 0.7,
     max_tokens: 900,
     stream: true,
-    response_format: { type: 'json_object', schema: JSON.stringify(ADJ_SCHEMA) },
+    ...(useGrammar ? { response_format: { type: 'json_object', schema: JSON.stringify(ADJ_SCHEMA) } } : {}),
     extra_body: { enable_thinking: false },
   });
   let out = '';
@@ -559,7 +560,32 @@ async function aiAdjudicate(s, text, onProgress) {
     out += chunk.choices[0]?.delta?.content || '';
     onProgress?.(out.length);
   }
-  return JSON.parse(out.replace(/<think>[\s\S]*?<\/think>/g, '').trim());
+  return out;
+}
+
+// 制約なしで生成した場合に備え、文章の中から最初の { … } を取り出して読む
+function extractJson(text) {
+  const body = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('no JSON in model output');
+  return JSON.parse(body.slice(start, end + 1));
+}
+
+async function aiAdjudicate(s, text, onProgress) {
+  const content = `# 状況\n${JSON.stringify(buildContext(s))}\n\n<player_input>${text}</player_input>`;
+  const messages = [{ role: 'system', content: SYSTEM_ADJUDICATE }, { role: 'user', content }];
+  if (!grammarBroken) {
+    try {
+      return extractJson(await generate(messages, true, onProgress));
+    } catch (err) {
+      // Worker越しのエラーはメッセージが失われることがあるので、種類を問わず制約なしでやり直す
+      console.warn('grammar-constrained generation failed; retrying without it', err);
+      grammarBroken = true;
+    }
+  }
+  messages[1].content += '\n\n出力例と同じ形のJSONオブジェクトだけを出力してください。';
+  return extractJson(await generate(messages, false, onProgress));
 }
 
 // =====================================================================
